@@ -1,17 +1,13 @@
 import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
-import network from 'network';
-import { bindNodeCallback, of, partition, from, concat, EMPTY } from 'rxjs';
-import { tap, mergeMap, filter, mapTo, share, map, distinct } from 'rxjs/operators';
-import ping from 'ping';
-import calculateNetwork from 'network-calculator';
-import getIpRange from 'get-ip-range';
-import arp from 'node-arp';
+import { of, partition, from, concat } from 'rxjs';
+import { tap, mergeMap, filter, share, map, distinct } from 'rxjs/operators';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { ModernFormsPlatformAccessory } from './platformAccessory';
 import {ResponsePayload} from './types';
 import axios from 'axios';
 import mqtt, {MqttClient} from 'mqtt';
+import DnsSd from 'node-dns-sd';
 
 interface FanConfig {
 
@@ -64,8 +60,8 @@ export class ModernFormsPlatform implements DynamicPlatformPlugin {
   async discoverDevices() {
     this.log.info('Looking for Modern Forms devices on network');
 
-    const getActiveInterface = bindNodeCallback(network.get_active_interface);
-    const getMAC = bindNodeCallback(arp.getMAC.bind(arp));
+    // const getActiveInterface = bindNodeCallback(network.get_active_interface);
+    // const getMAC = bindNodeCallback(arp.getMAC.bind(arp));
 
     const cachedFansAddresses$ = from(this.accessories ?? []).pipe(
       map(accessory => accessory.context.device),
@@ -76,22 +72,34 @@ export class ModernFormsPlatform implements DynamicPlatformPlugin {
       tap(fan => this.log.debug('Found potential IP address from config:', fan.ip)),
     );
 
-    const networkFansAddresses$ = of(this.config.autoDiscover).pipe(
-      mergeMap(autoDiscover => autoDiscover === false ? EMPTY : getActiveInterface()),
-      tap(() => this.log.debug('Searching network for Modern Forms fans')),
-      map(int => calculateNetwork(int.ip_address ?? '192.168.0.1', int.netmask ?? '255.255.255.0')),
-      map(network => network.network + '/' + network.bitmask),
-      mergeMap(subnet => getIpRange(subnet)),
-      mergeMap(ip => ping.promise.probe(ip).then(() => ip)),
-      mergeMap(ip => getMAC(ip).pipe(
-        map(mac => mac?.toUpperCase() ?? ''),
-        filter(mac => mac.startsWith('C8:93:46')),
-        mapTo({ ip: ip, light: true }),
-      )),
-      tap(fan => this.log.debug('Found potential IP address from network and filtering by MAC vendor:', fan.ip)),
+    // const networkFansAddresses$ = of(this.config.autoDiscover).pipe(
+    //   mergeMap(autoDiscover => autoDiscover === false ? EMPTY : getActiveInterface()),
+    //   tap(() => this.log.debug('Searching network for Modern Forms fans')),
+    //   map(int => calculateNetwork(int.ip_address ?? '192.168.0.1', int.netmask ?? '255.255.255.0')),
+    //   map(network => network.network + '/' + network.bitmask),
+    //   mergeMap(subnet => getIpRange(subnet)),
+    //   mergeMap(ip => ping.promise.probe(ip).then(() => ip)),
+    //   mergeMap(ip => getMAC(ip).pipe(
+    //     map(mac => mac?.toUpperCase() ?? ''),
+    //     filter(mac => mac.startsWith('C8:93:46')),
+    //     mapTo({ ip: ip, light: true }),
+    //   )),
+    //   tap(fan => this.log.debug('Found potential IP address from network and filtering by MAC vendor:', fan.ip)),
+    // );
+
+
+    const filterDiscover = DnsSd.discover({
+      name: '_easylink._tcp.local',
+      filter: (device) => /(MF|WAC)_.+(?=\._easylink._tcp.local)_/.test(device.fqdn),
+      wait: 30,
+    });
+
+    const networkDNSSD$ = from(filterDiscover).pipe(
+      map((device) => ({ip: device.address, light: true})),
+      tap(fan => this.log.debug('Found potential IP address from dns-sd', fan.ip)),
     );
 
-    const devices$ = concat(cachedFansAddresses$, configFansAddresses$, networkFansAddresses$).pipe(
+    const devices$ = concat(cachedFansAddresses$, configFansAddresses$, networkDNSSD$).pipe(
       distinct(),
       mergeMap(fan => of(fan).pipe(
         mergeMap(fan => this.ping(fan.ip).then(res => res.clientId).catch(() => null)),
