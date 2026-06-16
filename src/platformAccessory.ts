@@ -18,6 +18,8 @@ export class ModernFormsPlatformAccessory {
     lightOn: false,
     lightBrightness: 0,
     clientId: this.device().clientId,
+    wind: false,
+    windSpeed: 0,
   }
 
   constructor(
@@ -32,18 +34,21 @@ export class ModernFormsPlatformAccessory {
       // FAN SERVICE
 
       this.fanService =
-        this.accessory.getService(this.platform.Service.Fan) ??
-        this.accessory.addService(this.platform.Service.Fan);
+        this.accessory.getService(this.platform.Service.Fanv2) ??
+        this.accessory.addService(this.platform.Service.Fanv2);
 
-      this.fanService.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.ip);
-      this.fanService.getCharacteristic(this.platform.Characteristic.On)
+      this.fanService.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.name);
+      this.fanService.getCharacteristic(this.platform.Characteristic.Active)
         .onGet(this.getFanOn.bind(this))
         .onSet(this.setFanOn.bind(this));
       this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed)
         .onSet(this.setRotationSpeed.bind(this))
-        .setProps({ minStep: this.getStepWithoutGoingOver(6) });
+        .setProps({ minStep: 1, minValue: 1, unit: null });
       this.fanService.getCharacteristic(this.platform.Characteristic.RotationDirection)
         .onSet(this.setRotationDirection.bind(this));
+      this.fanService.getCharacteristic(this.platform.Characteristic.SwingMode)
+        .onGet(this.getSwingMode.bind(this))
+        .onSet(this.setSwingMode.bind(this));
 
       // LIGHT SERVICE
       if (this.device().light) {
@@ -51,7 +56,7 @@ export class ModernFormsPlatformAccessory {
           this.accessory.getService(this.platform.Service.Lightbulb) ??
           this.accessory.addService(this.platform.Service.Lightbulb);
 
-        this.lightService.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.ip);
+        this.lightService.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.name);
         this.lightService.getCharacteristic(this.platform.Characteristic.On).onSet( this.setLightOn.bind(this));
         this.lightService.getCharacteristic(this.platform.Characteristic.Brightness).onSet( this.setBrightness.bind(this));
       } else {
@@ -108,9 +113,22 @@ export class ModernFormsPlatformAccessory {
   updateStates(data : ResponsePayload) {
     this.platform.log.info(`Updating states for ${this.device().clientId}: ${JSON.stringify(data)}`);
     this.states = data;
-    this.fanService.getCharacteristic(this.platform.Characteristic.On).updateValue(data.fanOn);
+    this.fanService.getCharacteristic(this.platform.Characteristic.Active).updateValue(data.fanOn);
     this.updateLed();
-    this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed).updateValue(data.fanSpeed * 100 / NUMBER_OF_FAN_SPEEDS);
+
+    if (data.wind === true) {
+      this.fanService.getCharacteristic(this.platform.Characteristic.SwingMode)
+        .updateValue(this.platform.Characteristic.SwingMode.SWING_ENABLED);
+
+      this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed)
+        .setProps({maxValue: 3 })
+        .updateValue(data.windSpeed);
+    } else {
+      this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed)
+        .setProps({maxValue: NUMBER_OF_FAN_SPEEDS})
+        .updateValue(data.fanSpeed);
+    }
+
     this.fanService.getCharacteristic(this.platform.Characteristic.RotationDirection).updateValue(data.fanDirection === 'forward' ? 0 : 1);
 
     if (this.lightService) {
@@ -157,6 +175,7 @@ export class ModernFormsPlatformAccessory {
     return this.states.fanOn;
   }
 
+
   async setFanOn(value: CharacteristicValue) {
     this.log('Set Fan Characteristic On ->', value);
     this.states.fanOn = Boolean(value);
@@ -171,8 +190,25 @@ export class ModernFormsPlatformAccessory {
 
   async setRotationSpeed(value: CharacteristicValue) {
     this.log('Set Fan Characteristic On ->', value);
-    this.states.fanOn = value > 0;
-    this.states.fanSpeed = Math.round(value as number / 100 * NUMBER_OF_FAN_SPEEDS);
+    this.states.fanOn = (value as number) > 0;
+    if (this.states.wind) {
+      this.states.windSpeed = value as number; 
+    } else {
+      this.states.fanSpeed = value as number; 
+    }
+    this.sendDelayedUpdate();
+  }
+
+  async getSwingMode() {
+    this.log('Get Fan Characteristic swing mode');
+    return this.states.wind;
+  }
+
+  async setSwingMode(value: CharacteristicValue) {
+    this.log('Set Fan Characteristic swing mode ->', value);
+    this.states.wind = value === this.platform.Characteristic.SwingMode.SWING_ENABLED;
+    this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed)
+      .setProps({ maxValue: value === this.platform.Characteristic.SwingMode.SWING_ENABLED ? 3 : NUMBER_OF_FAN_SPEEDS });
     this.sendDelayedUpdate();
   }
 
@@ -186,7 +222,7 @@ export class ModernFormsPlatformAccessory {
 
   async setBrightness(value: CharacteristicValue) {
     this.log('Set Characteristic Brightness -> ', value);
-    this.states.lightOn = value > 0;
+    this.states.lightOn = (value as number) > 0;
     this.states.lightBrightness = value as number;
     this.sendDelayedUpdate();
   }

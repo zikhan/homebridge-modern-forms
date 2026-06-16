@@ -5,7 +5,14 @@ export declare type ResponsePayload = {
   fanDirection: 'forward' | 'reverse',
   lightOn: boolean,
   lightBrightness: number,
-  clientId: string
+  clientId: string,
+  wind: boolean,
+  windSpeed: number
+}
+
+export declare type StaticResponsePayload = {
+  clientId: string,
+  deviceName: string
 }
 
 export type RequestPayload = Omit<Partial<ResponsePayload>, 'clientId'>

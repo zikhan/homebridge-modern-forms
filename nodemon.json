@@ -4,10 +4,14 @@
   ],
   "ext": "ts",
   "ignore": [],
-  "exec": "tsc && homebridge -I -D -U .",
+  "exec": "tsc && hb-service run -U ./test/hbfiles -I",
   "signal": "SIGTERM",
   "env": {
     "NODE_OPTIONS": "--trace-warnings",
-    "MODERN_FORMS_DEBUG": "true"
+    "MODERN_FORMS_DEBUG": "true",
+		"DEBUG": "ModernFormsFans",
+    "UIX_DEVELOPMENT": 1,
+    "UIX_INSECURE_MODE": 1,
+    "UIX_SERVICE_MODE":1
   }
 }
