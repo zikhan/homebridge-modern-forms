@@ -122,3 +122,5 @@ dist
 #homebride
 accessories/
 persist/
+backups/
+.uix-*

@@ -1,0 +1,33 @@
+{
+    "platforms": [
+        {
+            "name": "Config",
+            "platform": "config",
+            "port": 8581,
+            "auth": "none",
+            "theme": "deep-purple",
+            "tempUnits": "c",
+            "lang": "auto",
+            "log": {
+                "maxSize": 10000
+            },
+            "accessoryControl": {
+                "debug": true
+            },
+            "disableServerMetricsMonitoring": true
+        },
+        {
+            "autoDiscover": true,
+            "pollingInterval": 60,
+            "platform": "ModernFormsFans"
+        }
+    ],
+    "bridge": {
+        "name": "Homebridge 99D5",
+        "username": "0E:62:2D:6D:99:D5",
+        "pin": "575-50-571",
+        "advertiser": "ciao",
+        "port": 51453
+    },
+    "accessories": []
+}
