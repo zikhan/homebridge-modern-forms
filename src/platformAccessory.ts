@@ -190,8 +190,8 @@ export class ModernFormsPlatformAccessory {
     apiUpdates$.subscribe();
 
     // 4. polling for current fan status
-    const poll$ = merge(interval(this.pollingInterval), this.getRequested$.pipe(throttleTime(1000))).pipe(
-      debounceTime(500),
+    const poll$ = merge(interval(this.pollingInterval), this.getRequested$).pipe(
+      throttleTime(1000),
       startWith(null),
       switchMap(() => from(this.fetchCurrentStateFromDevice())),
       tap(apiState => {
