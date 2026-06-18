@@ -18,7 +18,12 @@
         },
         {
             "autoDiscover": true,
-            "pollingInterval": 60,
+            "pollingInterval": 30,
+            "fans": [
+                {
+                    "light": true
+                }
+            ],
             "platform": "ModernFormsFans"
         }
     ],

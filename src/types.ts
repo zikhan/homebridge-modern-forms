@@ -1,4 +1,3 @@
-
 export declare type ResponsePayload = {
   fanOn: boolean,
   fanSpeed: number,
@@ -12,7 +11,22 @@ export declare type ResponsePayload = {
 
 export declare type StaticResponsePayload = {
   clientId: string,
-  deviceName: string
+  fanType?: string,
+  lightType?: string,
+  deviceName?: string
+}
+
+export interface FanConfig {
+  ip: string
+  light?: boolean
+  switch?: string
+  name?: string
+  model?: string
+}
+
+export interface DeviceContext extends FanConfig {
+  uuid: string,
+  clientId: string
 }
 
 export type RequestPayload = Omit<Partial<ResponsePayload>, 'clientId'>

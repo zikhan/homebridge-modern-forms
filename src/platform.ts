@@ -1,23 +1,17 @@
 import { API, Characteristic, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service} from 'homebridge';
-import { of, partition, from, concat, fromEventPattern } from 'rxjs';
+import { of, partition, from, concat, fromEventPattern, merge } from 'rxjs';
 import { tap, mergeMap, filter, share, map, distinct } from 'rxjs/operators';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { ModernFormsPlatformAccessory } from './platformAccessory';
-import {ResponsePayload, StaticResponsePayload} from './types';
+import {ResponsePayload, StaticResponsePayload, FanConfig, DeviceContext} from './types';
 import axios from 'axios';
 import mqtt, {MqttClient} from 'mqtt';
 import Bonjour, {Service as mdnsService} from 'bonjour-service';
 
-interface FanConfig {
-
-  ip: string
-  light?: boolean
-  switch?: string
-  name?: string
-}
 
 interface Config extends PlatformConfig {
+  pollingInterval?: number
   autoDiscover?: boolean
   fans?: Array<FanConfig>
 }
@@ -25,7 +19,7 @@ interface Config extends PlatformConfig {
 export class ModernFormsPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
   public readonly Characteristic: typeof Characteristic = this.api.hap.Characteristic;
-  public readonly accessories: PlatformAccessory[] = [];
+  public readonly accessories: PlatformAccessory<DeviceContext>[] = [];
   public readonly mqtt!: MqttClient;
   public readonly bonjour: Bonjour = new Bonjour({}, () => this.log.error('bonjour error'));
 
@@ -47,36 +41,40 @@ export class ModernFormsPlatform implements DynamicPlatformPlugin {
   }
 
   async ping(ip: string) {
-    return axios
-      .post<ResponsePayload>(`http://${ip}/mf`, {queryDynamicShadowData: 1})
-      .then(res => res.data);
+    await axios
+      .post<ResponsePayload>(`http://${ip}/mf`, {queryDynamicShadowData: 1});
   }
 
   async staticData(ip: string) {
-    return axios
-      .post<StaticResponsePayload>(`http://${ip}/mf`, {queryStaticShadowData: 1})
-      .then(res => res.data);
+    const resp = await axios
+      .post<StaticResponsePayload>(`http://${ip}/mf`, {queryStaticShadowData: 1});
+    return resp.data;
   }
 
   configureAccessory(accessory: PlatformAccessory) {
     this.log.info('Loading accessory from cache:', accessory.displayName);
-    this.accessories.push(accessory);
+    this.accessories.push(accessory as PlatformAccessory<DeviceContext>);
   }
 
   async discoverDevices() {
     this.log.info('Looking for Modern Forms devices on network');
 
-    // const getActiveInterface = bindNodeCallback(network.get_active_interface);
-    // const getMAC = bindNodeCallback(arp.getMAC.bind(arp));
-
     const cachedFansAddresses$ = from(this.accessories ?? []).pipe(
-      map(accessory => accessory.context.device),
+      map(accessory => {
+        if ((accessory.context as any).device) {
+          return <FanConfig>(accessory.context as any).device;
+        }
+        return accessory.context;
+      }),
       tap(fan => this.log.debug('Found potential IP address from cached devices:', fan.ip)),
     );
 
     const configFansAddresses$ = from(this.config.fans ?? []).pipe(
       tap(fan => this.log.debug('Found potential IP address from config:', fan.ip)),
     );
+
+    // const getActiveInterface = bindNodeCallback(network.get_active_interface);
+    // const getMAC = bindNodeCallback(arp.getMAC.bind(arp));
 
     // const networkFansAddresses$ = of(this.config.autoDiscover).pipe(
     //   mergeMap(autoDiscover => autoDiscover === false ? EMPTY : getActiveInterface()),
@@ -115,11 +113,14 @@ export class ModernFormsPlatform implements DynamicPlatformPlugin {
       tap(fan => this.log.debug('Found potential IP address from dns-sd', fan.ip)),
     );
 
-    const devices$ = concat(cachedFansAddresses$, configFansAddresses$, networkDNSSD$).pipe(
-      distinct(),
+    const devices$ = merge(cachedFansAddresses$, configFansAddresses$, networkDNSSD$).pipe(
+      distinct((fan) => fan.ip),
       mergeMap(fan => of(fan).pipe(
         mergeMap(fan => this.staticData(fan.ip).then(res => {
-          fan.name = res.deviceName ;return res.clientId;
+          fan.name = res.deviceName;
+          fan.light = !!res.lightType;
+          fan.model = res.fanType;
+          return res.clientId;
         }).catch(() => null)),
         filter((clientId): clientId is string => clientId !== null),
         tap(clientId => this.log.info(`Found device at ${fan.ip} with client ID of ${clientId}`)),
@@ -139,15 +140,15 @@ export class ModernFormsPlatform implements DynamicPlatformPlugin {
 
     newDevices$.subscribe(({ uuid, fan, clientId }) => {
       this.log.info('Adding new accessory:', clientId);
-      const accessory = new this.api.platformAccessory(clientId, uuid);
-      accessory.context.device = { uuid, ip: fan.ip, light: fan.light, switch: fan.switch, clientId, name: fan.name };
+      const accessory = new this.api.platformAccessory<DeviceContext>(clientId, uuid);
+      accessory.context = { uuid, ip: fan.ip, light: fan.light, switch: fan.switch, clientId, name: fan.name };
       new ModernFormsPlatformAccessory(this, accessory);
       this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
     });
 
     existingDevices$.subscribe(({ uuid, fan, clientId, existingAccessory }) => {
       this.log.info('Restoring existing accessory from cache:', clientId);
-      existingAccessory!.context.device = { uuid, ip: fan.ip, light: fan.light, switch: fan.switch, clientId, name: fan.name};
+      existingAccessory!.context = { uuid, ip: fan.ip, light: fan.light, switch: fan.switch, clientId, name: fan.name};
       new ModernFormsPlatformAccessory(this, existingAccessory!);
     });
   }

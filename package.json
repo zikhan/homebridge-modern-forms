@@ -41,7 +41,7 @@
     "network-calculator": "^1.2.0",
     "node-arp": "^1.0.6",
     "ping": "^0.2.3",
-    "rxjs": "^6.6.2"
+    "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@matter/types": "^0.17.2",
