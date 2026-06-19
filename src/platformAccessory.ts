@@ -165,10 +165,10 @@ export class ModernFormsPlatformAccessory {
 
     // build a batched request payload to send all at once from multiple inputs
     const payload$ = distinctStateChanges$.pipe(
-      skipWhile(() => this.isRemoteSync),
       tap(({ key, val }) => this.logStateUpdate(key, val)),
-      tap(() => this.pausePolling = true),
       buffer(distinctStateChanges$.pipe(debounceTime(250))),
+      skipWhile(() => this.isRemoteSync),
+      tap(() => this.pausePolling = true),
       map(batch => batch.reduce((acc, { key, val }) => {
         (acc as Record<string, unknown>)[key] = val;
         return acc;
