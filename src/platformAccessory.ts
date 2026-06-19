@@ -25,8 +25,9 @@ export class ModernFormsPlatformAccessory {
     lightBrightness: new BehaviorSubject<number>(1),
   };
 
-  private NUMBER_OF_FAN_SPEEDS = () => this.states$?.wind.getValue() ? 3 : 6;
+  private NUMBER_OF_FAN_SPEEDS = () => 1 + (this.states$?.wind.getValue() ? 3 : 6);
   private isRemoteSync = true;
+  private pausePolling = false;
   private getRequested$ = new Subject<void>();
 
   // Honestly, Polling really isn't needed anymore.
@@ -166,6 +167,7 @@ export class ModernFormsPlatformAccessory {
     const payload$ = distinctStateChanges$.pipe(
       skipWhile(() => this.isRemoteSync),
       tap(({ key, val }) => this.logStateUpdate(key, val)),
+      tap(() => this.pausePolling = true),
       buffer(distinctStateChanges$.pipe(debounceTime(250))),
       map(batch => batch.reduce((acc, { key, val }) => {
         (acc as Record<string, unknown>)[key] = val;
@@ -184,10 +186,12 @@ export class ModernFormsPlatformAccessory {
         if (apiResponse) {
           this.updateStatesFromRemote(apiResponse);
         }
+        this.pausePolling = false;
       }),
       catchError(err => {
         // log error, but don't break the stream
         this.platform.log.error('uncaught error in pipeline', err);
+        this.pausePolling = false;
         return from(Promise.resolve(null));
       }),
     );
@@ -196,6 +200,7 @@ export class ModernFormsPlatformAccessory {
 
     // 4. polling for current fan status
     const poll$ = merge(interval(this.pollingInterval), this.getRequested$).pipe(
+      skipWhile(() => this.pausePolling),
       startWith(null),
       throttleTime(1000),
       switchMap(() => from(this.fetchCurrentStateFromDevice())),
