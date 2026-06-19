@@ -55,7 +55,7 @@ export class ModernFormsPlatformAccessory {
         .onSet(this.setFanOn.bind(this));
       this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed)
         .onSet(this.setRotationSpeed.bind(this))
-        .setProps({ minStep: 1, minValue: 1, unit: null });
+        .setProps({ minStep: 1, minValue: 1, unit: 'Speed Step' });
       this.fanService.getCharacteristic(this.platform.Characteristic.RotationDirection)
         .onSet(this.setRotationDirection.bind(this));
       this.fanService.getCharacteristic(this.platform.Characteristic.SwingMode)
@@ -71,7 +71,9 @@ export class ModernFormsPlatformAccessory {
         this.lightService.getCharacteristic(this.platform.Characteristic.On)
           .onGet(this.getLightOn.bind(this))
           .onSet(this.setLightOn.bind(this));
-        this.lightService.getCharacteristic(this.platform.Characteristic.Brightness).onSet( this.setBrightness.bind(this));
+        this.lightService.getCharacteristic(this.platform.Characteristic.Brightness)
+          .onSet( this.setBrightness.bind(this))
+          .setProps({minValue: 1, maxValue: 100});
       } else {
         const oldLightService = this.accessory.getService(this.platform.Service.Lightbulb);
         if (oldLightService ) {
@@ -212,7 +214,7 @@ export class ModernFormsPlatformAccessory {
   } 
 
   private async sendDeviceState(payload: RequestPayload){
-    this.platform.log.info(`Sending state of ${this.device().clientId} to ${this.device().ip}.`);
+    this.platform.log.info(`Sending state of ${this.device().clientId} to ${this.device().ip}.`, payload);
     try{
       const resp = await axios
         .post<ResponsePayload>(`http://${this.device().ip}/mf`, payload);
@@ -297,7 +299,6 @@ export class ModernFormsPlatformAccessory {
   }
 
   setRotationSpeed(value: CharacteristicValue) {
-    this.states$.fanOn.next((value as number) > 0);
     if (this.states$.wind.getValue()) {
       this.states$.windSpeed.next(value as number);
     } else {
@@ -325,7 +326,6 @@ export class ModernFormsPlatformAccessory {
   }
 
   setBrightness(value: CharacteristicValue) {
-    this.states$.lightOn.next((value as number) > 0);
     this.states$.lightBrightness.next(value as number);
     return Promise.resolve();
   }
