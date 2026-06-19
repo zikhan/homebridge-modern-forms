@@ -1,5 +1,5 @@
 {
-  "displayName": "Modern Forms Fans",
+  "displayName": "My Modern Forms Fans",
   "name": "@zikhan/homebridge-modern-forms-fans",
   "version": "2.0.0",
   "description": "Add Modern Forms fans to your Home app using Homebridge.",
@@ -15,6 +15,7 @@
     "homebridge": "^1.6.0 || ^2.0.0",
     "node": "^22.12.0 || ^24.0.0"
   },
+	"private": true,
   "main": "dist/index.js",
   "scripts": {
     "lint": "eslint src/**.ts",
