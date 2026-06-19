@@ -29,7 +29,11 @@ export class ModernFormsPlatformAccessory {
   private isRemoteSync = true;
   private getRequested$ = new Subject<void>();
 
-  private readonly pollingInterval = (this.platform.config.pollingInterval ?? 5) * 1000;
+  // Honestly, Polling really isn't needed anymore.
+  // It's really just for caching the state of the fan, so on when the homekit page loads
+  // the view will be somewhat up-to-date, but homekit will still request the update
+  // through the Get Characteristic
+  private readonly pollingInterval = (this.platform.config.pollingInterval ?? 60) * 1000;
 
   constructor(
     private readonly platform: ModernFormsPlatform,
@@ -55,7 +59,6 @@ export class ModernFormsPlatformAccessory {
       this.fanService.getCharacteristic(this.platform.Characteristic.RotationDirection)
         .onSet(this.setRotationDirection.bind(this));
       this.fanService.getCharacteristic(this.platform.Characteristic.SwingMode)
-        .onGet(this.getSwingMode.bind(this))
         .onSet(this.setSwingMode.bind(this));
 
       // LIGHT SERVICE
@@ -119,15 +122,15 @@ export class ModernFormsPlatformAccessory {
 
     // Update charateristics
     this.states$?.wind
-      .subscribe(() => {
-        this.updateFanCharacteristic.bind(this, this.platform.Characteristic.SwingMode);
+      .subscribe((value) => {
+        this.updateFanCharacteristic(this.platform.Characteristic.SwingMode, value);
         this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed)
           .setProps({ maxValue: this.NUMBER_OF_FAN_SPEEDS() });
       });
     this.states$?.fanOn
       .subscribe((value) => {
         this.updateLed();
-        this.updateFanCharacteristic.bind(value, this.platform.Characteristic.Active);
+        this.updateFanCharacteristic(this.platform.Characteristic.Active, value);
       });
 
     iif(() => this.states$?.wind.getValue() ?? false, this.states$.windSpeed, this.states$.fanSpeed)
@@ -191,8 +194,8 @@ export class ModernFormsPlatformAccessory {
 
     // 4. polling for current fan status
     const poll$ = merge(interval(this.pollingInterval), this.getRequested$).pipe(
-      throttleTime(1000),
       startWith(null),
+      throttleTime(1000),
       switchMap(() => from(this.fetchCurrentStateFromDevice())),
       tap(apiState => {
         if (apiState) {
@@ -301,12 +304,6 @@ export class ModernFormsPlatformAccessory {
       this.states$.fanSpeed.next(value as number); 
     }
     return Promise.resolve();
-  }
-
-  getSwingMode() {
-    this.log('Get Fan Characteristic swing mode');
-    this.getRequested$.next();
-    return firstValueFrom(this.states$.wind);
   }
 
   setSwingMode(value: CharacteristicValue) {

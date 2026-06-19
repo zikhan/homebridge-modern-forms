@@ -1,5 +1,5 @@
-import { API, Characteristic, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service} from 'homebridge';
-import { of, partition, from, concat, fromEventPattern, merge } from 'rxjs';
+import { API, Characteristic, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, UnknownContext} from 'homebridge';
+import { of, partition, from, fromEventPattern, merge } from 'rxjs';
 import { tap, mergeMap, filter, share, map, distinct } from 'rxjs/operators';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
@@ -46,6 +46,7 @@ export class ModernFormsPlatform implements DynamicPlatformPlugin {
   }
 
   async staticData(ip: string) {
+    this.log.debug(`Fetching static data for ${ip}`);
     const resp = await axios
       .post<StaticResponsePayload>(`http://${ip}/mf`, {queryStaticShadowData: 1});
     return resp.data;
@@ -61,8 +62,8 @@ export class ModernFormsPlatform implements DynamicPlatformPlugin {
 
     const cachedFansAddresses$ = from(this.accessories ?? []).pipe(
       map(accessory => {
-        if ((accessory.context as any).device) {
-          return <FanConfig>(accessory.context as any).device;
+        if ((accessory.context as UnknownContext).device) {
+          return <FanConfig>(accessory.context as UnknownContext).device;
         }
         return accessory.context;
       }),
@@ -70,6 +71,7 @@ export class ModernFormsPlatform implements DynamicPlatformPlugin {
     );
 
     const configFansAddresses$ = from(this.config.fans ?? []).pipe(
+      filter((fan) => !!fan.ip),
       tap(fan => this.log.debug('Found potential IP address from config:', fan.ip)),
     );
 
@@ -121,7 +123,9 @@ export class ModernFormsPlatform implements DynamicPlatformPlugin {
           fan.light = !!res.lightType;
           fan.model = res.fanType;
           return res.clientId;
-        }).catch(() => null)),
+        }).catch((err) => {
+          this.log.error('Error getting static data', err); return null;
+        })),
         filter((clientId): clientId is string => clientId !== null),
         tap(clientId => this.log.info(`Found device at ${fan.ip} with client ID of ${clientId}`)),
         map(clientId => {
