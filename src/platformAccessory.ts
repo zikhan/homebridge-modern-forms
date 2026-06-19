@@ -159,6 +159,7 @@ export class ModernFormsPlatformAccessory {
     const distinctStateChanges$ = merge(...Object.entries(this.states$).map(([key, sub$]) =>
       from(sub$).pipe(
         distinctUntilChanged(),
+        skipWhile(() => this.isRemoteSync),
         map(val => ({ key, val })),
       ),
     ));
@@ -166,9 +167,8 @@ export class ModernFormsPlatformAccessory {
     // build a batched request payload to send all at once from multiple inputs
     const payload$ = distinctStateChanges$.pipe(
       tap(({ key, val }) => this.logStateUpdate(key, val)),
-      buffer(distinctStateChanges$.pipe(debounceTime(250))),
-      skipWhile(() => this.isRemoteSync),
       tap(() => this.pausePolling = true),
+      buffer(distinctStateChanges$.pipe(debounceTime(250))),
       map(batch => batch.reduce((acc, { key, val }) => {
         (acc as Record<string, unknown>)[key] = val;
         return acc;
