@@ -4,7 +4,7 @@ import { ModernFormsPlatform } from './platform';
 import { DeviceContext, RequestPayload, ResponsePayload } from './types';
 import axios from 'axios';
 import {
-  iif, BehaviorSubject, map, distinctUntilChanged, debounceTime,
+  combineLatest, BehaviorSubject, map, distinctUntilChanged, debounceTime,
   from, merge, switchMap, buffer, skipWhile,
   firstValueFrom, tap, catchError, Subject,
   startWith, interval, throttleTime,
@@ -25,7 +25,7 @@ export class ModernFormsPlatformAccessory {
     lightBrightness: new BehaviorSubject<number>(1),
   };
 
-  private NUMBER_OF_FAN_SPEEDS = () => 1 + (this.states$?.wind.getValue() ? 3 : 6);
+  private NUMBER_OF_FAN_SPEEDS = () => (this.states$?.wind.getValue() ? 3 : 6);
   private isRemoteSync = true;
   private pausePolling = false;
   private getRequested$ = new Subject<void>();
@@ -43,6 +43,7 @@ export class ModernFormsPlatformAccessory {
       this.accessory.getService(this.platform.Service.AccessoryInformation)!
         .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Modern Forms')
         .setCharacteristic(this.platform.Characteristic.Model, this.device().model ?? 'Unknown')
+        .setCharacteristic(this.platform.Characteristic.FirmwareRevision, this.device().firmwareVersion ?? '0')
         .setCharacteristic(this.platform.Characteristic.SerialNumber, this.device().clientId);
 
       // FAN SERVICE
@@ -56,7 +57,7 @@ export class ModernFormsPlatformAccessory {
         .onSet(this.setFanOn.bind(this));
       this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed)
         .onSet(this.setRotationSpeed.bind(this))
-        .setProps({ minStep: 1, minValue: 1, unit: 'Speed Step' });
+        .setProps({ minStep: 1, minValue: 1, unit: 'Speed' });
       this.fanService.getCharacteristic(this.platform.Characteristic.RotationDirection)
         .onSet(this.setRotationDirection.bind(this));
       this.fanService.getCharacteristic(this.platform.Characteristic.SwingMode)
@@ -110,7 +111,7 @@ export class ModernFormsPlatformAccessory {
 
   // HELPERS
   logStateUpdate(characteristic: string, value: CharacteristicValue) {
-    this.log(`Updating ${characteristic}`, value);
+    this.log(`Updating property ${characteristic}`, value);
   }
 
   updateFanCharacteristic(characteristic: WithUUID<new () => Characteristic>, value: CharacteristicValue) {
@@ -128,7 +129,9 @@ export class ModernFormsPlatformAccessory {
       .subscribe((value) => {
         this.updateFanCharacteristic(this.platform.Characteristic.SwingMode, value);
         this.fanService.getCharacteristic(this.platform.Characteristic.RotationSpeed)
-          .setProps({ maxValue: this.NUMBER_OF_FAN_SPEEDS() });
+          .setProps({
+            maxValue: this.NUMBER_OF_FAN_SPEEDS(),
+          });
       });
     this.states$?.fanOn
       .subscribe((value) => {
@@ -136,7 +139,12 @@ export class ModernFormsPlatformAccessory {
         this.updateFanCharacteristic(this.platform.Characteristic.Active, value);
       });
 
-    iif(() => this.states$?.wind.getValue() ?? false, this.states$.windSpeed, this.states$.fanSpeed)
+    
+    combineLatest({ wind: this.states$.wind, windSpeed: this.states$.windSpeed, fanSpeed: this.states$.fanSpeed })
+      .pipe(
+        distinctUntilChanged(),
+        map(({ wind, windSpeed, fanSpeed }) => wind ? windSpeed : fanSpeed),
+      )
       .subscribe(this.updateFanCharacteristic.bind(this, this.platform.Characteristic.RotationSpeed));
 
     this.states$.fanDirection
@@ -299,7 +307,7 @@ export class ModernFormsPlatformAccessory {
   }
 
   setRotationDirection(value: CharacteristicValue) {
-    this.states$.fanDirection.next(value === 0 ? 'forward' : 'reverse');
+    this.states$.fanDirection.next(value === this.platform.Characteristic.RotationDirection.CLOCKWISE ? 'forward' : 'reverse');
     return Promise.resolve();
   }
 

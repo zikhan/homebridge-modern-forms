@@ -72,3 +72,7 @@ If you would like to disable the automatic discovery of fans on your network, sp
     "autoDiscover": false
 }
 ```
+
+## Updating local installation
+
+Pull latest branch, run `npm i`, run `npm run build`, restart bridge

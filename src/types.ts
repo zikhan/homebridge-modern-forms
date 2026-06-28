@@ -14,6 +14,7 @@ export declare type StaticResponsePayload = {
   fanType?: string,
   lightType?: string,
   deviceName?: string
+  firmwareVersion?: string
 }
 
 export interface FanConfig {
@@ -22,6 +23,7 @@ export interface FanConfig {
   switch?: string
   name?: string
   model?: string
+  firmwareVersion?: string
 }
 
 export interface DeviceContext extends FanConfig {

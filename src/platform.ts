@@ -122,6 +122,7 @@ export class ModernFormsPlatform implements DynamicPlatformPlugin {
           fan.name = res.deviceName;
           fan.light = !!res.lightType;
           fan.model = res.fanType;
+          fan.firmwareVersion = res.firmwareVersion;
           return res.clientId;
         }).catch((err) => {
           this.log.error('Error getting static data', err); return null;
@@ -145,14 +146,32 @@ export class ModernFormsPlatform implements DynamicPlatformPlugin {
     newDevices$.subscribe(({ uuid, fan, clientId }) => {
       this.log.info('Adding new accessory:', clientId);
       const accessory = new this.api.platformAccessory<DeviceContext>(clientId, uuid);
-      accessory.context = { uuid, ip: fan.ip, light: fan.light, switch: fan.switch, clientId, name: fan.name };
+      accessory.context = {
+        uuid,
+        ip: fan.ip,
+        light: fan.light,
+        switch: fan.switch,
+        clientId,
+        name: fan.name,
+        model: fan.model,
+        firmwareVersion: fan.firmwareVersion,
+      };
       new ModernFormsPlatformAccessory(this, accessory);
       this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
     });
 
     existingDevices$.subscribe(({ uuid, fan, clientId, existingAccessory }) => {
       this.log.info('Restoring existing accessory from cache:', clientId);
-      existingAccessory!.context = { uuid, ip: fan.ip, light: fan.light, switch: fan.switch, clientId, name: fan.name};
+      existingAccessory!.context = {
+        uuid,
+        ip: fan.ip,
+        light: fan.light,
+        switch: fan.switch,
+        clientId,
+        name: fan.name,
+        model: fan.model,
+        firmwareVersion: fan.firmwareVersion,
+      };
       new ModernFormsPlatformAccessory(this, existingAccessory!);
     });
   }
