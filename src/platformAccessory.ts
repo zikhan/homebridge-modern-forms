@@ -150,8 +150,8 @@ export class ModernFormsPlatformAccessory {
     this.states$.fanDirection
       .pipe(
         map(dir => dir === 'forward'
-          ? this.platform.Characteristic.RotationDirection.CLOCKWISE
-          : this.platform.Characteristic.RotationDirection.COUNTER_CLOCKWISE,
+          ? this.platform.Characteristic.RotationDirection.COUNTER_CLOCKWISE
+          : this.platform.Characteristic.RotationDirection.CLOCKWISE,
         ),
       )
       .subscribe(this.updateFanCharacteristic.bind(this, this.platform.Characteristic.RotationDirection));
@@ -307,7 +307,7 @@ export class ModernFormsPlatformAccessory {
   }
 
   setRotationDirection(value: CharacteristicValue) {
-    this.states$.fanDirection.next(value === this.platform.Characteristic.RotationDirection.CLOCKWISE ? 'forward' : 'reverse');
+    this.states$.fanDirection.next(value === this.platform.Characteristic.RotationDirection.COUNTER_CLOCKWISE ? 'forward' : 'reverse');
     return Promise.resolve();
   }
 
