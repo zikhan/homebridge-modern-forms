@@ -1,5 +1,4 @@
-import { Service, PlatformAccessory, CharacteristicValue, Characteristic, WithUUID } from 'homebridge';
-
+import { Service, PlatformAccessory, CharacteristicValue, Characteristic, WithUUID, HapStatusError } from 'homebridge';
 import { ModernFormsPlatform } from './platform';
 import { DeviceContext, RequestPayload, ResponsePayload } from './types';
 import axios from 'axios';
@@ -29,6 +28,7 @@ export class ModernFormsPlatformAccessory {
   private isRemoteSync = true;
   private pausePolling = false;
   private getRequested$ = new Subject<void>();
+  private requestCompleted$ = new Subject<null | HapStatusError>();
 
   // Honestly, Polling really isn't needed anymore.
   // It's really just for caching the state of the fan, so on when the homekit page loads
@@ -172,6 +172,8 @@ export class ModernFormsPlatformAccessory {
       ),
     ));
 
+    this.requestCompleted$.subscribe((val) => this.log('request completed', val));
+
     // build a batched request payload to send all at once from multiple inputs
     const payload$ = distinctStateChanges$.pipe(
       tap(({ key, val }) => this.logStateUpdate(key, val)),
@@ -200,11 +202,18 @@ export class ModernFormsPlatformAccessory {
         // log error, but don't break the stream
         this.platform.log.error('uncaught error in pipeline', err);
         this.pausePolling = false;
-        return from(Promise.resolve(null));
+        return from(
+          Promise.resolve(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)),
+        );
       }),
     );
 
-    apiUpdates$.subscribe();
+    apiUpdates$.subscribe((val) => {
+      if (val instanceof this.platform.api.hap.HapStatusError) {
+        this.requestCompleted$.next(val); 
+      }
+      this.requestCompleted$.next(null);
+    });
 
     // 4. polling for current fan status
     const poll$ = merge(interval(this.pollingInterval), this.getRequested$).pipe(
@@ -219,11 +228,18 @@ export class ModernFormsPlatformAccessory {
       }),
       catchError(err => {
         this.platform.log.error('Uncaught Error polling device:', err);
-        return from(Promise.resolve(null));
+        return from(
+          Promise.resolve(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE)),
+        );
       }),
     );
 
-    poll$.subscribe();
+    poll$.subscribe((val) => {
+      if (val instanceof this.platform.api.hap.HapStatusError) {
+        this.requestCompleted$.next(val); 
+      }
+      this.requestCompleted$.next(null);
+    });
   } 
 
   private async sendDeviceState(payload: RequestPayload){
@@ -301,28 +317,41 @@ export class ModernFormsPlatformAccessory {
     return firstValueFrom(this.states$.fanOn);
   }
 
-  setFanOn(value: CharacteristicValue) : Promise<void> {
+  async setFanOn(value: CharacteristicValue) : Promise<void> {
     this.states$.fanOn.next(Boolean(value));
+    const completed = await firstValueFrom(this.requestCompleted$);
+    if (completed instanceof this.platform.api.hap.HapStatusError) {
+      throw completed; 
+    }
     return Promise.resolve();
   }
 
-  setRotationDirection(value: CharacteristicValue) {
+  async setRotationDirection(value: CharacteristicValue) : Promise<void> {
     this.states$.fanDirection.next(value === this.platform.Characteristic.RotationDirection.COUNTER_CLOCKWISE ? 'forward' : 'reverse');
-    return Promise.resolve();
+    const completed = await firstValueFrom(this.requestCompleted$);
+    if (completed instanceof this.platform.api.hap.HapStatusError) {
+      throw completed; 
+    }
   }
 
-  setRotationSpeed(value: CharacteristicValue) {
+  async setRotationSpeed(value: CharacteristicValue) : Promise<void> {
     if (this.states$.wind.getValue()) {
       this.states$.windSpeed.next(value as number);
     } else {
       this.states$.fanSpeed.next(value as number); 
     }
-    return Promise.resolve();
+    const completed = await firstValueFrom(this.requestCompleted$);
+    if (completed instanceof this.platform.api.hap.HapStatusError) {
+      throw completed; 
+    }
   }
 
-  setSwingMode(value: CharacteristicValue) {
+  async setSwingMode(value: CharacteristicValue) : Promise<void> {
     this.states$.wind.next(value === this.platform.Characteristic.SwingMode.SWING_ENABLED);
-    return Promise.resolve();
+    const completed = await firstValueFrom(this.requestCompleted$);
+    if (completed instanceof this.platform.api.hap.HapStatusError) {
+      throw completed; 
+    }
   }
 
   // LIGHT GETTERS / SETTERS
@@ -333,13 +362,19 @@ export class ModernFormsPlatformAccessory {
     return firstValueFrom(this.states$.lightOn);
   }
 
-  setLightOn(value: CharacteristicValue) {
+  async setLightOn(value: CharacteristicValue) : Promise<void> {
     this.states$.lightOn.next(Boolean(value));
-    return Promise.resolve();
+    const completed = await firstValueFrom(this.requestCompleted$);
+    if (completed instanceof this.platform.api.hap.HapStatusError) {
+      throw completed; 
+    }
   }
 
-  setBrightness(value: CharacteristicValue) {
+  async setBrightness(value: CharacteristicValue) : Promise<void> {
     this.states$.lightBrightness.next(value as number);
-    return Promise.resolve();
+    const completed = await firstValueFrom(this.requestCompleted$);
+    if (completed instanceof this.platform.api.hap.HapStatusError) {
+      throw completed; 
+    }
   }
 }
